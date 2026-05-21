@@ -20,7 +20,7 @@ except Exception as e:
 st.set_page_config(page_title="JT Logística Móvil", layout="centered")
 st.title("🚚 JT Logística - Gestión Integral")
 
-# Menú principal con la nueva pestaña de Bodega
+# Menú principal
 opcion_menu = st.radio(
     "Seleccione la operación a realizar:", 
     ["📋 Gestión de Envíos", "🏢 Inventario Bodega", "📦 Registrar Retiro"], 
@@ -30,36 +30,36 @@ opcion_menu = st.radio(
 st.divider()
 
 # =========================================================
-# NUEVA PESTAÑA: INVENTARIO EN BODEGA
+# PESTAÑA: INVENTARIO EN BODEGA (MUESTRA ENVÍOS Y RETIROS)
 # =========================================================
 if opcion_menu == "🏢 Inventario Bodega":
-    st.subheader("📦 Paquetes Físicos en Bodega / Centro de Distribución")
-    st.write("A continuación se muestran los paquetes que han ingresado y se encuentran actualmente retenidos en bodega esperando despacho:")
+    st.subheader(" Paquetes Físicos en Bodega / Centro de Distribución")
+    st.write("A continuación se muestran los paquetes y retiros que se encuentran físicamente en bodega esperando despacho:")
 
     try:
-        # Consultar solo los paquetes que están en el centro de distribución o en sucursal
-        respuesta = supabase.table("paquetes").select("*").in_("estado", ["En Centro de Distribución", "En sucursal"]).execute()
+        # Consultar paquetes en bodega o sucursal
+        respuesta = supabase.table("paquetes").select("*").in_("estado", ["En Centro de Distribución", "En sucursal", "Retirado en Bodega"]).execute()
         paquetes_bodega = respuesta.data
 
         if paquetes_bodega:
-            # Mostrar métrica rápida de stock
-            st.metric(label="Total de Paquetes en Bodega", value=len(paquetes_bodega))
+            st.metric(label="Total de Cargas en Bodega", value=len(paquetes_bodega))
             
-            # Listar cada paquete dentro de una tarjeta desplegable limpia
             for p in paquetes_bodega:
-                with st.expander(f"📦 Código: {p['id']} - Destinatario: {p['destinatario']}"):
-                    st.write(f"**Remitente:** {p['remitente']}")
-                    st.write(f"**Dirección de Destino:** {p['destino']}")
-                    st.write(f"**Estado de Almacenamiento:** {p['estado']}")
-                    st.write(f"**Fecha de Ingreso/Modificación:** {p['fecha_actualizacion']}")
+                # Identificar visualmente si es un envío normal o viene de un retiro
+                icono = "📥" if p['id'].startswith("RET-") else "📦"
+                with st.expander(f"{icono} Código: {p['id']} - Para: {p['destinatario']}"):
+                    st.write(f"**Remitente / Cliente:** {p['remitente']}")
+                    st.write(f"**Dirección:** {p['destino']}")
+                    st.write(f"**Estado Actual:** {p['estado']}")
+                    st.write(f"**Último Movimiento:** {p['fecha_actualizacion']}")
         else:
-            st.success("¡Bodega al día! No hay paquetes físicos retenidos en almacenamiento en este momento.")
+            st.success("¡Bodega al día! No hay bultos retenidos en almacenamiento en este momento.")
             
     except Exception as e:
         st.error(f"Error al cargar el inventario de bodega: {e}")
 
 # =========================================================
-# PESTAÑA: INGRESO DE PAQUETES RETIRADOS
+# PESTAÑA: INGRESO DE PAQUETES RETIRADOS (CON COPIA A BODEGA)
 # =========================================================
 elif opcion_menu == "📦 Registrar Retiro":
     st.subheader("Formulario de Paquetes Retirados")
@@ -69,29 +69,37 @@ elif opcion_menu == "📦 Registrar Retiro":
         direccion = st.text_input("Dirección Exacta del Retiro:")
         telefono = st.text_input("Teléfono de Contacto:")
         chofer = st.text_input("Nombre del Chofer / Recolector:")
-        comentarios = st.text_area("Comentarios o Descripción de la Carga (Ej: 3 cajas medianas):")
+        comentarios = st.text_area("Comentarios o Descripción de la Carga (Ej: Destinatario Carlos Pérez, Destino Valparaíso):")
         
         btn_guardar_retiro = st.form_submit_button("Confirmar y Registrar Retiro")
         
         if btn_guardar_retiro:
             if cliente and direccion and telefono and chofer:
-                id_retiro = "RET-" + str(uuid.uuid4())[:6].upper()
+                id_retiro = "RET-" + str(uuid.uuid4())[:5].upper()
                 fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
                 try:
+                    # 1. Guardar en la tabla histórica de retiros
                     supabase.table("retiros").insert({
-                        "id": id_retiro,
-                        "cliente_solicitante": cliente,
-                        "direccion_retiro": direccion,
-                        "contacto_telefono": telefono,
-                        "fecha_hora_retiro": fecha_hora,
-                        "chofer_asignado": chofer, 
-                        "estado_retiro": "Retirado con Éxito",
-                        "comentarios": comentarios
+                        "id": id_retiro, "cliente_solicitante": cliente, "direccion_retiro": direccion,
+                        "contacto_telefono": telefono, "fecha_hora_retiro": fecha_hora,
+                        "chofer_asignado": chofer, "estado_retiro": "Retirado con Éxito", "comentarios": comentarios
                     }).execute()
-                    st.success(f"¡Retiro registrado con éxito en la nube! Código: {id_retiro}")
+                    
+                    # 2. ACCIÓN INTELIGENTE: Insertar automáticamente en la tabla de bodega para que la oficina lo gestione
+                    supabase.table("paquetes").insert({
+                        "id": id_retiro,
+                        "remitente": f"RETIRO: {cliente}",
+                        "destinatario": "Por Clasificar (Ver comentarios)",
+                        "destino": "Por Asignar",
+                        "estado": "Retirado en Bodega",
+                        "fecha_actualizacion": fecha_hora,
+                        "receptor_nombre": "", "receptor_rut": ""
+                    }).execute()
+                    
+                    st.success(f"¡Retiro registrado! Se envió una copia automática al Inventario de Bodega. Código: {id_retiro}")
                 except Exception as ex:
-                    st.error(f"Error al guardar retiro en la nube: {ex}")
+                    st.error(f"Error al procesar: {ex}")
             else:
                 st.warning("Por favor, rellena todos los campos obligatorios.")
 
@@ -102,9 +110,9 @@ elif opcion_menu == "📦 Registrar Retiro":
         if datos_retiros:
             for r in datos_retiros:
                 with st.expander(f"📦 {r['id']} - {r['cliente_solicitante']}"):
-                    st.write(f"**Dirección:** {r['direccion_retiro']}")
-                    st.write(f"**Chofer:** {r['chofer_asignado']}")
-                    st.write(f"**Detalles:** {r['comentarios']}")
+                    st.write(f"**Dirección Retiro:** {r['direccion_retiro']}")
+                    st.write(f"**Chofer Recolector:** {r['chofer_asignado']}")
+                    st.write(f"**Detalles de Carga:** {r['comentarios']}")
         else:
             st.write("No hay retiros registrados.")
     except Exception as e:
@@ -123,7 +131,6 @@ elif opcion_menu == "📋 Gestión de Envíos":
             rem = st.text_input("Nombre del Remitente:")
             dest = st.text_input("Nombre del Destinatario:")
             dir_dest = st.text_input("Dirección de Destino:")
-            
             btn_guardar = st.form_submit_button("Guardar en Oficina")
             
             if btn_guardar:

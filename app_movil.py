@@ -4,7 +4,7 @@ from datetime import datetime
 from supabase import create_client, Client
 
 # --- CREDENCIALES DE SUPABASE ---
-SUPABASE_URL = "https://supabase.co"
+SUPABASE_URL = "https://piqelelxosnaexoecmpd.supabase.co"
 SUPABASE_KEY = "sb_publishable_Q3i7sihSiPrL2copimL_Jw_9NZyAxyj"
 
 @st.cache_resource
@@ -50,13 +50,14 @@ if opcion_menu == "📦 Registrar Retiro":
                 fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
                 try:
+                    # CORRECCIÓN: Usamos 'chofer_asignado' en español para que coincida con Supabase
                     supabase.table("retiros").insert({
                         "id": id_retiro,
                         "cliente_solicitante": cliente,
                         "direccion_retiro": direccion,
                         "contacto_telefono": telefono,
                         "fecha_hora_retiro": fecha_hora,
-                        "chofer_assigned": chofer, # Asegúrate de que coincida con el nombre en Supabase
+                        "chofer_asignado": chofer, 
                         "estado_retiro": "Retirado con Éxito",
                         "comentarios": comentarios
                     }).execute()
@@ -75,7 +76,7 @@ if opcion_menu == "📦 Registrar Retiro":
             for r in datos_retiros:
                 with st.expander(f"📦 {r['id']} - {r['cliente_solicitante']}"):
                     st.write(f"**Dirección:** {r['direccion_retiro']}")
-                    st.write(f"**Chofer:** {r['chofer_assigned']}")
+                    st.write(f"**Chofer:** {r['chofer_asignado']}") # CORRECCIÓN AQUÍ TAMBIÉN
                     st.write(f"**Detalles:** {r['comentarios']}")
         else:
             st.write("No hay retiros registrados.")
@@ -96,7 +97,6 @@ elif opcion_menu == "📋 Gestión de Envíos":
             dest = st.text_input("Nombre del Destinatario:")
             dir_dest = st.text_input("Dirección de Destino:")
             
-            # SOLUCIÓN: Botón nativo de Streamlit corregido
             btn_guardar = st.form_submit_button("Guardar en Oficina")
             
             if btn_guardar:

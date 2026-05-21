@@ -4,7 +4,7 @@ from datetime import datetime
 from supabase import create_client, Client
 
 # --- CREDENCIALES DE SUPABASE ---
-SUPABASE_URL = "https://piqelelxosnaexoecmpd.supabase.co"
+SUPABASE_URL = "https://supabase.co"
 SUPABASE_KEY = "sb_publishable_Q3i7sihSiPrL2copimL_Jw_9NZyAxyj"
 
 @st.cache_resource
@@ -20,19 +20,48 @@ except Exception as e:
 st.set_page_config(page_title="JT Logística Móvil", layout="centered")
 st.title("🚚 JT Logística - Gestión Integral")
 
-# Menú principal optimizado para pantallas táctiles de celulares
+# Menú principal con la nueva pestaña de Bodega
 opcion_menu = st.radio(
     "Seleccione la operación a realizar:", 
-    ["📋 Gestión de Envíos", "📦 Registrar Retiro"], 
+    ["📋 Gestión de Envíos", "🏢 Inventario Bodega", "📦 Registrar Retiro"], 
     horizontal=True
 )
 
 st.divider()
 
 # =========================================================
+# NUEVA PESTAÑA: INVENTARIO EN BODEGA
+# =========================================================
+if opcion_menu == "🏢 Inventario Bodega":
+    st.subheader("📦 Paquetes Físicos en Bodega / Centro de Distribución")
+    st.write("A continuación se muestran los paquetes que han ingresado y se encuentran actualmente retenidos en bodega esperando despacho:")
+
+    try:
+        # Consultar solo los paquetes que están en el centro de distribución o en sucursal
+        respuesta = supabase.table("paquetes").select("*").in_("estado", ["En Centro de Distribución", "En sucursal"]).execute()
+        paquetes_bodega = respuesta.data
+
+        if paquetes_bodega:
+            # Mostrar métrica rápida de stock
+            st.metric(label="Total de Paquetes en Bodega", value=len(paquetes_bodega))
+            
+            # Listar cada paquete dentro de una tarjeta desplegable limpia
+            for p in paquetes_bodega:
+                with st.expander(f"📦 Código: {p['id']} - Destinatario: {p['destinatario']}"):
+                    st.write(f"**Remitente:** {p['remitente']}")
+                    st.write(f"**Dirección de Destino:** {p['destino']}")
+                    st.write(f"**Estado de Almacenamiento:** {p['estado']}")
+                    st.write(f"**Fecha de Ingreso/Modificación:** {p['fecha_actualizacion']}")
+        else:
+            st.success("¡Bodega al día! No hay paquetes físicos retenidos en almacenamiento en este momento.")
+            
+    except Exception as e:
+        st.error(f"Error al cargar el inventario de bodega: {e}")
+
+# =========================================================
 # PESTAÑA: INGRESO DE PAQUETES RETIRADOS
 # =========================================================
-if opcion_menu == "📦 Registrar Retiro":
+elif opcion_menu == "📦 Registrar Retiro":
     st.subheader("Formulario de Paquetes Retirados")
     
     with st.form("formulario_retiros", clear_on_submit=True):
@@ -50,7 +79,6 @@ if opcion_menu == "📦 Registrar Retiro":
                 fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
                 try:
-                    # CORRECCIÓN: Usamos 'chofer_asignado' en español para que coincida con Supabase
                     supabase.table("retiros").insert({
                         "id": id_retiro,
                         "cliente_solicitante": cliente,
@@ -65,9 +93,8 @@ if opcion_menu == "📦 Registrar Retiro":
                 except Exception as ex:
                     st.error(f"Error al guardar retiro en la nube: {ex}")
             else:
-                st.warning("Por favor, rellena todos los campos obligatorios (Cliente, Dirección, Teléfono y Chofer).")
+                st.warning("Por favor, rellena todos los campos obligatorios.")
 
-    # Mostrar historial de retiros
     st.subheader("Historial de Retiros")
     try:
         res_retiros = supabase.table("retiros").select("*").execute()
@@ -76,7 +103,7 @@ if opcion_menu == "📦 Registrar Retiro":
             for r in datos_retiros:
                 with st.expander(f"📦 {r['id']} - {r['cliente_solicitante']}"):
                     st.write(f"**Dirección:** {r['direccion_retiro']}")
-                    st.write(f"**Chofer:** {r['chofer_asignado']}") # CORRECCIÓN AQUÍ TAMBIÉN
+                    st.write(f"**Chofer:** {r['chofer_asignado']}")
                     st.write(f"**Detalles:** {r['comentarios']}")
         else:
             st.write("No hay retiros registrados.")
